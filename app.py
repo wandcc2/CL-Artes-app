@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import math
-from fpdf import FPDF
 import base64
 from datetime import datetime
 
@@ -36,7 +35,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# BANCO DE DADOS (SQLite)
+# BANCO DE DADOS (Garantindo que é executado primeiro)
 # ==========================================
 def init_db():
     conn = sqlite3.connect('sistema_dtf_v2.db')
@@ -69,13 +68,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS vendas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cliente_id INTEGER,
-            tipo_operacao TEXT, -- 'PDV' ou 'Orçamento DTF'
+            tipo_operacao TEXT,
             data TEXT,
             valor_total REAL,
             desconto REAL,
             valor_final REAL,
             forma_pagamento TEXT,
-            status TEXT, -- 'Concluída', 'Pendente'
+            status TEXT,
             FOREIGN KEY (cliente_id) REFERENCES clientes (id)
         )
     ''')
@@ -83,13 +82,13 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Inicializa o banco ANTES de qualquer verificação de login
 init_db()
 
 # ==========================================
 # SISTEMA DE AUTENTICAÇÃO (LOGIN)
 # ==========================================
 def checar_login():
-    """Função para validar login e gerenciar a sessão do usuário"""
     if 'autenticado' not in st.session_state:
         st.session_state['autenticado'] = False
 
@@ -103,7 +102,6 @@ def checar_login():
             senha_input = st.text_input("Senha", type="password")
             
             if st.button("Entrar", use_container_width=True):
-                # Validação das credenciais iniciais
                 if usuario_input == "ADM" and senha_input == "ADM":
                     st.session_state['autenticado'] = True
                     st.session_state['usuario_atual'] = usuario_input
@@ -114,7 +112,6 @@ def checar_login():
         return False
     return True
 
-# Bloqueia a execução do restante da aplicação se não estiver logado
 if not checar_login():
     st.stop()
 
@@ -153,7 +150,6 @@ def get_produtos():
 if menu == "🛒 PDV / Caixa":
     st.markdown("<h1 class='main-title'>🛒 Frente de Caixa - PDV</h1>", unsafe_allow_html=True)
     
-    # Seleção de Cliente
     df_clientes = get_clientes()
     opcoes_clientes = {"Cliente Não Identificado (Balcão)": None}
     for idx, row in df_clientes.iterrows():
@@ -164,7 +160,6 @@ if menu == "🛒 PDV / Caixa":
     
     st.markdown("---")
     
-    # Carrinho de Compras na Sessão
     if 'carrinho' not in st.session_state:
         st.session_state.carrinho = []
         
@@ -277,34 +272,26 @@ elif menu == "🧮 Precificadora DTF":
     with col2:
         st.subheader("Cálculo e Resultado")
         
-        # Área útil da folha DTF (40cm de largura x 100cm de comprimento)
         LARGURA_UTIL_FOLHA = 40.0
-        
-        # Quantas artes cabem na largura da folha
         artes_por_largura = math.floor(LARGURA_UTIL_FOLHA / largura_cm)
         if artes_por_largura < 1:
             artes_por_largura = 1
             st.warning("⚠️ A largura da arte excede a largura padrão da folha (40cm).")
             
-        # Linhas necessárias para suprir a quantidade
         linhas_necessarias = math.ceil(quantidade / artes_por_largura)
-        
-        # Comprimento total em metros necessário
         comprimento_total_cm = linhas_necessarias * altura_cm
         metros_necessarios = comprimento_total_cm / 100.0
         
-        # Custos
         custo_total_dtf = metros_necessarios * custo_metro
         custo_total = custo_total_dtf + taxa_extra
         
-        # Preço final com margem
         preco_venda_total = custo_total * (1 + (margem_lucro / 100.0))
         preco_unitario = preco_venda_total / quantidade
         
         st.markdown(f"""
         <div class='metric-card'>
             <h4>📊 Resumo do Orçamento:</h4>
-            <p><b>Metragem Necesária:</b> {metros_necessarios:.2f} metros lineares</p>
+            <p><b>Metragem Necessária:</b> {metros_necessarios:.2f} metros lineares</p>
             <p><b>Artes por Fila (Largura):</b> {artes_por_largura} unid.</p>
             <p><b>Custo Total Estimado:</b> R$ {custo_total:.2f}</p>
             <hr>
@@ -313,7 +300,6 @@ elif menu == "🧮 Precificadora DTF":
         </div>
         """, unsafe_allow_html=True)
         
-        # Seleção de cliente para salvar o orçamento
         df_cli = get_clientes()
         cli_dict = {"Cliente Não Registrado": None}
         for idx, row in df_cli.iterrows():
