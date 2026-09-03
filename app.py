@@ -14,6 +14,9 @@ st.set_page_config(
     layout="wide"
 )
 
+# Nome do Banco de Dados
+DB_NAME = 'sistema_cl_artes.db'
+
 # Estilo CSS Personalizado
 st.markdown("""
 <style>
@@ -35,10 +38,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# BANCO DE DADOS (Garantindo que é executado primeiro)
+# BANCO DE DADOS
 # ==========================================
 def init_db():
-    conn = sqlite3.connect('sistema_dtf_v2.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
     # Tabela de Clientes
@@ -82,7 +85,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Inicializa o banco ANTES de qualquer verificação de login
+# Inicializa o banco na abertura do script
 init_db()
 
 # ==========================================
@@ -133,13 +136,13 @@ menu = st.sidebar.radio(
 # FUNÇÕES DE APOIO
 # ==========================================
 def get_clientes():
-    conn = sqlite3.connect('sistema_dtf_v2.db')
+    conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT id, nome, telefone FROM clientes ORDER BY nome", conn)
     conn.close()
     return df
 
 def get_produtos():
-    conn = sqlite3.connect('sistema_dtf_v2.db')
+    conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM produtos ORDER BY nome", conn)
     conn.close()
     return df
@@ -229,7 +232,7 @@ if menu == "🛒 PDV / Caixa":
             col_b1, col_b2 = st.columns(2)
             with col_b1:
                 if st.button("✅ Finalizar Venda", type="primary", use_container_width=True):
-                    conn = sqlite3.connect('sistema_dtf_v2.db')
+                    conn = sqlite3.connect(DB_NAME)
                     cursor = conn.cursor()
                     cursor.execute('''
                         INSERT INTO vendas (cliente_id, tipo_operacao, data, valor_total, desconto, valor_final, forma_pagamento, status)
@@ -309,7 +312,7 @@ elif menu == "🧮 Precificadora DTF":
         cli_orc_id = cli_dict[cli_orc]
         
         if st.button("💾 Salvar Orçamento no Histórico"):
-            conn = sqlite3.connect('sistema_dtf_v2.db')
+            conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO vendas (cliente_id, tipo_operacao, data, valor_total, desconto, valor_final, forma_pagamento, status)
@@ -338,7 +341,7 @@ elif menu == "👥 Clientes":
             
         if st.button("Salvar Cliente", type="primary"):
             if nome_cli:
-                conn = sqlite3.connect('sistema_dtf_v2.db')
+                conn = sqlite3.connect(DB_NAME)
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO clientes (nome, telefone, email, cpf_cnpj)
@@ -376,7 +379,7 @@ elif menu == "📦 Catálogo de Produtos":
             
         if st.button("Cadastrar Produto", type="primary"):
             if nome_prod:
-                conn = sqlite3.connect('sistema_dtf_v2.db')
+                conn = sqlite3.connect(DB_NAME)
                 cursor = conn.cursor()
                 cursor.execute('''
                     INSERT INTO produtos (nome, categoria, preco, estoque)
@@ -401,7 +404,7 @@ elif menu == "📦 Catálogo de Produtos":
 elif menu == "📊 Vendas / Histórico":
     st.markdown("<h1 class='main-title'>📊 Histórico de Vendas e Orçamentos</h1>", unsafe_allow_html=True)
     
-    conn = sqlite3.connect('sistema_dtf_v2.db')
+    conn = sqlite3.connect(DB_NAME)
     query = '''
         SELECT 
             v.id AS 'ID Venda',
