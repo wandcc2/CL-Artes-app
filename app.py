@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import math
-import base64
+import os
 from datetime import datetime
+from fpdf import FPDF
 
 # ==========================================
 # CONFIGURAÇÃO INICIAL E ESTILO
@@ -55,6 +56,83 @@ OPCOES_TABELA = {
         1000: 3.50
     }
 }
+
+# ==========================================
+# CLASSE PARA GERAÇÃO DO PDF DE ORÇAMENTO
+# ==========================================
+class PDFOrcamento(FPDF):
+    def header(self):
+        # Inclusão da logo se existir no diretório
+        if os.path.exists("logo.jpg"):
+            self.image("logo.jpg", 10, 8, 33)
+            self.set_x(48)
+            self.set_font("Helvetica", "B", 16)
+            self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True)
+            self.set_x(48)
+            self.set_font("Helvetica", "", 10)
+            self.cell(0, 5, "Orçamentos e Comprovantes de Pedido", ln=True)
+            self.ln(10)
+        else:
+            self.set_font("Helvetica", "B", 18)
+            self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True, align="C")
+            self.ln(5)
+
+    def footer(self):
+        self.set_y(-25)
+        self.set_font("Helvetica", "I", 8)
+        self.multi_cell(0, 4, 
+            "Aviso Importante: Este orçamento tem validade de 3 (três) dias a contar da data de sua emissão. "
+            "Os valores finais podem variar de acordo com a taxa de frete e local de entrega.", 
+            align="C"
+        )
+        self.ln(2)
+        self.cell(0, 5, f"Página {self.page_no()}", align="C")
+
+def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total):
+    pdf = PDFOrcamento()
+    pdf.add_page()
+    
+    # Título do Documento
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 10, "ORÇAMENTO DE PRODUTOS", ln=True, align="C")
+    pdf.ln(3)
+    
+    # Dados do Cliente e Data
+    pdf.set_font("Helvetica", "", 10)
+    data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+    pdf.cell(0, 6, f"Data de Emissão: {data_atual}", ln=True)
+    pdf.cell(0, 6, f"Cliente: {cliente_nome}", ln=True)
+    if cliente_contato:
+        pdf.cell(0, 6, f"Contato: {cliente_contato}", ln=True)
+    
+    pdf.ln(5)
+    
+    # Cabeçalho da Tabela
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(100, 8, "Descrição do Item / Produto", border=1, fill=True)
+    pdf.cell(25, 8, "Qtd", border=1, align="C", fill=True)
+    pdf.cell(30, 8, "Vlr. Un. (R$)", border=1, align="R", fill=True)
+    pdf.cell(35, 8, "Subtotal (R$)", border=1, align="R", fill=True)
+    pdf.ln()
+    
+    # Itens do Orçamento
+    pdf.set_font("Helvetica", "", 9)
+    for item in itens:
+        nome_curto = item['nome'][:50] + "..." if len(item['nome']) > 53 else item['nome']
+        pdf.cell(100, 7, nome_curto, border=1)
+        pdf.cell(25, 7, str(item['qtd']), border=1, align="C")
+        pdf.cell(30, 7, f"{item['preco_unit']:.2f}", border=1, align="R")
+        pdf.cell(35, 7, f"{item['subtotal']:.2f}", border=1, align="R")
+        pdf.ln()
+        
+    # Totalizador
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(155, 8, "VALOR TOTAL ESTIMADO:", border=0, align="R")
+    pdf.cell(35, 8, f"R$ {valor_total:.2f}", border=1, align="R", fill=True)
+    
+    return bytes(pdf.output())
 
 # ==========================================
 # BANCO DE DADOS
@@ -155,7 +233,7 @@ if st.sidebar.button("🚪 Sair do Sistema"):
 st.sidebar.markdown("---")
 menu = st.sidebar.radio(
     "Navegação",
-    ["🛒 PDV / Caixa", "🧮 Precificadora DTF", "👥 Clientes", "📦 Catálogo de Produtos", "📊 Vendas / Histórico"]
+    ["🛒 PDV / Caixa", "📄 Gerar Orçamento", "🧮 Precificadora DTF", "👥 Clientes", "📦 Catálogo de Produtos", "📊 Vendas / Histórico"]
 )
 
 # ==========================================
@@ -205,7 +283,6 @@ if menu == "🛒 PDV / Caixa":
                 prod_nome = st.selectbox("Selecione o Produto:", df_produtos['Nome do Produto'].tolist())
                 prod_info = df_produtos[df_produtos['Nome do Produto'] == prod_nome].iloc[0]
                 
-                # Se o produto tiver tabela de quantidades fixas
                 if prod_nome in OPCOES_TABELA:
                     tabela_quantidades = OPCOES_TABELA[prod_nome]
                     lista_qtds = list(tabela_quantidades.keys())
@@ -213,12 +290,10 @@ if menu == "🛒 PDV / Caixa":
                     qtd = st.selectbox("Selecione a Quantidade (Tabela):", lista_qtds, key="qtd_prod_select")
                     preco_unit = tabela_quantidades[qtd]
                     
-                    # Exibição visual dinâmica e bloqueada para edição
                     st.markdown("**Preço Unitário Aplicado (Visualização):**")
                     st.subheader(f"R$ {preco_unit:.2f} / un")
                     st.info(f"💡 Total do Item: {qtd} un x R$ {preco_unit:.2f} = **R$ {(qtd * preco_unit):.2f}**")
                 else:
-                    # Para produtos comuns sem tabela fixa
                     qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="qtd_prod_input")
                     preco_unit = st.number_input(
                         "Preço Unitário (R$):", 
@@ -301,7 +376,107 @@ if menu == "🛒 PDV / Caixa":
             st.info("O carrinho está vazio.")
 
 # ==========================================
-# 2. MÓDULO: PRECIFICADORA DTF
+# 2. MÓDULO: GERAR ORÇAMENTO (PDF)
+# ==========================================
+elif menu == "📄 Gerar Orçamento":
+    st.markdown("<h1 class='main-title'>📄 Gerador de Orçamento em PDF</h1>", unsafe_allow_html=True)
+    
+    df_clientes = get_clientes()
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        if not df_clientes.empty:
+            opcoes_cli_orc = {f"{row['nome']} ({row['telefone']})": row for _, row in df_clientes.iterrows()}
+            cliente_sel_str = st.selectbox("Selecione o Cliente:", list(opcoes_cli_orc.keys()))
+            cliente_info = opcoes_cli_orc[cliente_sel_str]
+            cliente_nome = cliente_info['nome']
+            cliente_contato = cliente_info['telefone']
+            cliente_id = cliente_info['id']
+        else:
+            st.warning("Nenhum cliente cadastrado. Cadastre um cliente na aba '👥 Clientes'.")
+            cliente_nome = st.text_input("Nome do Cliente (Avulso):", value="Cliente Não Cadastrado")
+            cliente_contato = ""
+            cliente_id = None
+            
+    st.divider()
+    
+    if 'itens_orcamento' not in st.session_state:
+        st.session_state.itens_orcamento = []
+        
+    col_item_form, col_item_list = st.columns([1, 1])
+    
+    with col_item_form:
+        st.subheader("Adicionar Itens ao Orçamento")
+        df_produtos = get_produtos()
+        
+        if not df_produtos.empty:
+            prod_orc_nome = st.selectbox("Selecione o Produto:", df_produtos['Nome do Produto'].tolist(), key="prod_orc")
+            prod_orc_info = df_produtos[df_produtos['Nome do Produto'] == prod_orc_nome].iloc[0]
+            
+            if prod_orc_nome in OPCOES_TABELA:
+                tabela_quantidades = OPCOES_TABELA[prod_orc_nome]
+                qtd_orc = st.selectbox("Selecione a Quantidade:", list(tabela_quantidades.keys()), key="qtd_orc_sel")
+                preco_orc_unit = tabela_quantidades[qtd_orc]
+                st.info(f"Valor Unitário: R$ {preco_orc_unit:.2f} | Subtotal: R$ {(qtd_orc * preco_orc_unit):.2f}")
+            else:
+                qtd_orc = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="qtd_orc_num")
+                preco_orc_unit = st.number_input("Preço Unitário (R$):", value=float(prod_orc_info['Preço de Venda (R$)']), step=0.50, key="preco_orc_num")
+                
+            if st.button("➕ Incluir no Orçamento", use_container_width=True):
+                st.session_state.itens_orcamento.append({
+                    "nome": prod_orc_nome,
+                    "qtd": qtd_orc,
+                    "preco_unit": preco_orc_unit,
+                    "subtotal": qtd_orc * preco_orc_unit
+                })
+                st.success("Item adicionado ao orçamento!")
+                st.rerun()
+
+    with col_item_list:
+        st.subheader("Resumo dos Itens do Orçamento")
+        
+        if st.session_state.itens_orcamento:
+            df_orc = pd.DataFrame(st.session_state.itens_orcamento)
+            st.dataframe(df_orc[['nome', 'qtd', 'preco_unit', 'subtotal']], use_container_width=True)
+            
+            total_orc = sum(item['subtotal'] for item in st.session_state.itens_orcamento)
+            st.markdown(f"### **Total do Orçamento: R$ {total_orc:.2f}**")
+            
+            pdf_data = gerar_pdf_bytes(cliente_nome, cliente_contato, st.session_state.itens_orcamento, total_orc)
+            
+            col_b_dl, col_b_salvar, col_b_cls = st.columns(3)
+            
+            with col_b_dl:
+                st.download_button(
+                    label="📥 Baixar PDF",
+                    data=pdf_data,
+                    file_name=f"Orcamento_CL_Artes_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary"
+                )
+                
+            with col_b_salvar:
+                if st.button("💾 Salvar no Histórico", use_container_width=True):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO vendas (cliente_id, tipo_operacao, data, valor_total, desconto, valor_final, forma_pagamento, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (cliente_id, 'Orçamento PDF', datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_orc, 0.0, total_orc, 'Orçamento', 'Pendente'))
+                    conn.commit()
+                    conn.close()
+                    st.success("Orçamento salvo no histórico com sucesso!")
+                    
+            with col_b_cls:
+                if st.button("🗑️ Limpar", use_container_width=True):
+                    st.session_state.itens_orcamento = []
+                    st.rerun()
+        else:
+            st.info("Nenhum item adicionado ao orçamento até o momento.")
+
+# ==========================================
+# 3. MÓDULO: PRECIFICADORA DTF
 # ==========================================
 elif menu == "🧮 Precificadora DTF":
     st.markdown("<h1 class='main-title'>🧮 Calculadora de Orçamento DTF</h1>", unsafe_allow_html=True)
@@ -370,7 +545,7 @@ elif menu == "🧮 Precificadora DTF":
             st.success("Orçamento gravado com sucesso no histórico!")
 
 # ==========================================
-# 3. MÓDULO: GERENCIAMENTO DE CLIENTES
+# 4. MÓDULO: GERENCIAMENTO DE CLIENTES
 # ==========================================
 elif menu == "👥 Clientes":
     st.markdown("<h1 class='main-title'>👥 Gestão de Clientes</h1>", unsafe_allow_html=True)
@@ -408,7 +583,7 @@ elif menu == "👥 Clientes":
             st.info("Nenhum cliente cadastrado.")
 
 # ==========================================
-# 4. MÓDULO: CATÁLOGO DE PRODUTOS
+# 5. MÓDULO: CATÁLOGO DE PRODUTOS
 # ==========================================
 elif menu == "📦 Catálogo de Produtos":
     st.markdown("<h1 class='main-title'>📦 Catálogo de Produtos & Tabelas de Preço</h1>", unsafe_allow_html=True)
@@ -530,7 +705,7 @@ elif menu == "📦 Catálogo de Produtos":
             st.table(df_abridor)
 
 # ==========================================
-# 5. MÓDULO: HISTÓRICO DE VENDAS
+# 6. MÓDULO: HISTÓRICO DE VENDAS
 # ==========================================
 elif menu == "📊 Vendas / Histórico":
     st.markdown("<h1 class='main-title'>📊 Histórico de Vendas e Orçamentos</h1>", unsafe_allow_html=True)
