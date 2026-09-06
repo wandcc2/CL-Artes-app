@@ -213,8 +213,10 @@ if menu == "🛒 PDV / Caixa":
                     qtd = st.selectbox("Selecione a Quantidade (Tabela):", lista_qtds, key="qtd_prod_select")
                     preco_unit = tabela_quantidades[qtd]
                     
-                    st.number_input("Preço Unitário Aplicado (R$):", value=float(preco_unit), disabled=True, format="%.2f", key="preco_prod_disabled")
-                    st.success(f"💰 Total do Item: {qtd} un x R$ {preco_unit:.2f} = R$ {(qtd * preco_unit):.2f}")
+                    # Exibição visual dinâmica e bloqueada para edição
+                    st.markdown("**Preço Unitário Aplicado (Visualização):**")
+                    st.subheader(f"R$ {preco_unit:.2f} / un")
+                    st.info(f"💡 Total do Item: {qtd} un x R$ {preco_unit:.2f} = **R$ {(qtd * preco_unit):.2f}**")
                 else:
                     # Para produtos comuns sem tabela fixa
                     qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="qtd_prod_input")
