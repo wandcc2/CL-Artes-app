@@ -85,14 +85,13 @@ def init_db():
         )
     ''')
     
-    # Tabela de Produtos (Catálogo PDV)
+    # Tabela de Produtos (Catálogo PDV) - Sem coluna de estoque
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nome TEXT NOT NULL,
             categoria TEXT,
-            preco REAL NOT NULL,
-            estoque INTEGER DEFAULT 0
+            preco REAL NOT NULL
         )
     ''')
     
@@ -116,9 +115,9 @@ def init_db():
     cursor.execute("SELECT COUNT(*) FROM produtos")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
-            INSERT INTO produtos (nome, categoria, preco, estoque) VALUES
-            ('CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)', 'Chaveiros / Brindes', 9.17, 1000),
-            ('CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)', 'Chaveiros / Brindes', 4.17, 1000)
+            INSERT INTO produtos (nome, categoria, preco) VALUES
+            ('CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)', 'Chaveiros / Brindes', 9.17),
+            ('CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)', 'Chaveiros / Brindes', 4.17)
         ''')
     
     conn.commit()
@@ -181,7 +180,7 @@ def get_clientes():
 
 def get_produtos():
     conn = sqlite3.connect(DB_NAME)
-    df = pd.read_sql_query("SELECT * FROM produtos ORDER BY nome", conn)
+    df = pd.read_sql_query("SELECT id, nome AS 'Nome do Produto', categoria AS 'Categoria', preco AS 'Preço de Venda (R$)' FROM produtos ORDER BY nome", conn)
     conn.close()
     return df
 
@@ -214,15 +213,15 @@ if menu == "🛒 PDV / Caixa":
         
         with tab1:
             if not df_produtos.empty:
-                prod_nome = st.selectbox("Selecione o Produto:", df_produtos['nome'].tolist())
-                prod_info = df_produtos[df_produtos['nome'] == prod_nome].iloc[0]
+                prod_nome = st.selectbox("Selecione o Produto:", df_produtos['Nome do Produto'].tolist())
+                prod_info = df_produtos[df_produtos['Nome do Produto'] == prod_nome].iloc[0]
                 
                 qtd = st.number_input("Quantidade:", min_value=1, value=10, step=1, key="qtd_prod")
                 
                 # Aplica cálculo automático de preço por tabela progressiva (se disponível)
                 preco_sugerido = calcular_preco_unitario(prod_nome, qtd)
                 if preco_sugerido is None:
-                    preco_sugerido = float(prod_info['preco'])
+                    preco_sugerido = float(prod_info['Preço de Venda (R$)'])
                 
                 preco_unit = st.number_input(
                     "Preço Unitário (R$):", 
@@ -418,39 +417,94 @@ elif menu == "👥 Clientes":
 elif menu == "📦 Catálogo de Produtos":
     st.markdown("<h1 class='main-title'>📦 Catálogo de Produtos & Tabelas de Preço</h1>", unsafe_allow_html=True)
     
-    tab_p1, tab_p2, tab_p3 = st.tabs(["➕ Novo Produto", "📋 Produtos Cadastrados", "🏷️ Tabela de Atacado / Escala"])
+    tab_p1, tab_p2, tab_p3, tab_p4 = st.tabs([
+        "➕ Novo Produto", 
+        "✏️ Editar / Alterar Preço", 
+        "📋 Produtos Cadastrados", 
+        "🏷️ Tabela de Atacado / Escala"
+    ])
     
+    # --- CADASTRO DE PRODUTO ---
     with tab_p1:
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             nome_prod = st.text_input("Nome do Produto / Item:")
             categoria_prod = st.text_input("Categoria (ex: Chaveiros, Camisetas):")
         with col_p2:
-            preco_prod = st.number_input("Preço de Venda (R$):", min_value=0.01, value=25.0, step=1.0)
-            estoque_prod = st.number_input("Estoque Inicial:", min_value=0, value=100, step=1)
+            preco_prod = st.number_input("Preço Base de Venda (R$):", min_value=0.01, value=25.0, step=1.0)
             
         if st.button("Cadastrar Produto", type="primary"):
             if nome_prod:
                 conn = sqlite3.connect(DB_NAME)
                 cursor = conn.cursor()
                 cursor.execute('''
-                    INSERT INTO produtos (nome, categoria, preco, estoque)
-                    VALUES (?, ?, ?, ?)
-                ''', (nome_prod, categoria_prod, preco_prod, estoque_prod))
+                    INSERT INTO produtos (nome, categoria, preco)
+                    VALUES (?, ?, ?)
+                ''', (nome_prod, categoria_prod, preco_prod))
                 conn.commit()
                 conn.close()
                 st.success(f"Produto '{nome_prod}' cadastrado com sucesso!")
+                st.rerun()
             else:
                 st.warning("O nome do produto é obrigatório.")
                 
+    # --- EDIÇÃO / ALTERAÇÃO DE PREÇO ---
     with tab_p2:
+        df_prod_edit = get_produtos()
+        if not df_prod_edit.empty:
+            prod_edit_dict = {f"{row['Nome do Produto']} (R$ {row['Preço de Venda (R$)']:.2f})": row for _, row in df_prod_edit.iterrows()}
+            prod_sel_str = st.selectbox("Selecione o Produto para Editar:", list(prod_edit_dict.keys()))
+            
+            prod_sel = prod_edit_dict[prod_sel_str]
+            prod_id = prod_sel['id']
+            
+            st.divider()
+            st.subheader("Editar Informações do Produto")
+            
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                novo_nome = st.text_input("Nome do Produto:", value=prod_sel['Nome do Produto'])
+                nova_categoria = st.text_input("Categoria:", value=prod_sel['Categoria'])
+            with col_e2:
+                novo_preco = st.number_input("Preço de Venda (R$):", min_value=0.01, value=float(prod_sel['Preço de Venda (R$)']), step=0.50, format="%.2f")
+            
+            col_b_save, col_b_del = st.columns([2, 1])
+            with col_b_save:
+                if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE produtos 
+                        SET nome = ?, categoria = ?, preco = ? 
+                        WHERE id = ?
+                    ''', (novo_nome, nova_categoria, novo_preco, prod_id))
+                    conn.commit()
+                    conn.close()
+                    st.success("Produto atualizado com sucesso!")
+                    st.rerun()
+                    
+            with col_b_del:
+                if st.button("🗑️ Excluir Produto", use_container_width=True):
+                    conn = sqlite3.connect(DB_NAME)
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM produtos WHERE id = ?', (prod_id,))
+                    conn.commit()
+                    conn.close()
+                    st.warning("Produto excluído do catálogo!")
+                    st.rerun()
+        else:
+            st.info("Nenhum produto cadastrado para edição.")
+
+    # --- LISTA DE PRODUTOS ---
+    with tab_p3:
         df_prod = get_produtos()
         if not df_prod.empty:
-            st.dataframe(df_prod, use_container_width=True)
+            st.dataframe(df_prod[['Nome do Produto', 'Categoria', 'Preço de Venda (R$)']], use_container_width=True)
         else:
             st.info("Nenhum produto cadastrado.")
 
-    with tab_p3:
+    # --- TABELA DE ATACADO ---
+    with tab_p4:
         st.subheader("Tabelas de Desconto Progressivo por Quantidade")
         
         col_t1, col_t2 = st.columns(2)
