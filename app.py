@@ -37,35 +37,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# REGRAS DE PREÇO POR QUANTIDADE (ATACADO)
+# TABELAS FIXAS DE QUANTIDADES E PREÇOS
 # ==========================================
-TABELA_DESCONTOS = {
-    "CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)": [
-        {"min": 90, "preco": 8.33},
-        {"min": 60, "preco": 8.75},
-        {"min": 30, "preco": 9.17},
-        {"min": 1,  "preco": 9.17}
-    ],
-    "CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)": [
-        {"min": 1000, "preco": 3.50},
-        {"min": 500,  "preco": 3.67},
-        {"min": 250,  "preco": 3.71},
-        {"min": 100,  "preco": 3.75},
-        {"min": 50,   "preco": 3.83},
-        {"min": 20,   "preco": 3.92},
-        {"min": 10,   "preco": 4.17},
-        {"min": 1,    "preco": 4.17}
-    ]
+OPCOES_TABELA = {
+    "CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)": {
+        30: 9.17,
+        60: 8.75,
+        90: 8.33
+    },
+    "CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)": {
+        10: 4.17,
+        20: 3.92,
+        50: 3.83,
+        100: 3.75,
+        250: 3.71,
+        500: 3.67,
+        1000: 3.50
+    }
 }
-
-def calcular_preco_unitario(nome_produto, quantidade):
-    """Calcula o preço unitário correto com base na faixa de quantidade do produto"""
-    if nome_produto in TABELA_DESCONTOS:
-        faixas = TABELA_DESCONTOS[nome_produto]
-        for faixa in faixas:
-            if quantidade >= faixa["min"]:
-                return faixa["preco"]
-    return None
 
 # ==========================================
 # BANCO DE DADOS
@@ -85,7 +74,7 @@ def init_db():
         )
     ''')
     
-    # Tabela de Produtos (Catálogo PDV) - Sem coluna de estoque
+    # Tabela de Produtos (Catálogo PDV)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,7 +100,7 @@ def init_db():
         )
     ''')
     
-    # Inserção automática dos novos produtos se o catálogo estiver vazio
+    # Inserção automática dos produtos se o catálogo estiver vazio
     cursor.execute("SELECT COUNT(*) FROM produtos")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
@@ -216,31 +205,35 @@ if menu == "🛒 PDV / Caixa":
                 prod_nome = st.selectbox("Selecione o Produto:", df_produtos['Nome do Produto'].tolist())
                 prod_info = df_produtos[df_produtos['Nome do Produto'] == prod_nome].iloc[0]
                 
-                qtd = st.number_input("Quantidade:", min_value=1, value=10, step=1, key="qtd_prod")
-                
-                # Aplica cálculo automático de preço por tabela progressiva (se disponível)
-                preco_sugerido = calcular_preco_unitario(prod_nome, qtd)
-                if preco_sugerido is None:
-                    preco_sugerido = float(prod_info['Preço de Venda (R$)'])
-                
-                preco_unit = st.number_input(
-                    "Preço Unitário (R$):", 
-                    value=float(preco_sugerido), 
-                    format="%.2f", 
-                    key="preco_prod"
-                )
-                
-                if prod_nome in TABELA_DESCONTOS:
-                    st.info(f"💡 Preço recalculado pela tabela de quantidade ({qtd} un = R$ {preco_sugerido:.2f}/un).")
+                # Se o produto tiver tabela de quantidades fixas
+                if prod_nome in OPCOES_TABELA:
+                    tabela_quantidades = OPCOES_TABELA[prod_nome]
+                    lista_qtds = list(tabela_quantidades.keys())
+                    
+                    qtd = st.selectbox("Selecione a Quantidade (Tabela):", lista_qtds, key="qtd_prod_select")
+                    preco_unit = tabela_quantidades[qtd]
+                    
+                    st.number_input("Preço Unitário Aplicado (R$):", value=float(preco_unit), disabled=True, format="%.2f", key="preco_prod_disabled")
+                    st.success(f"💰 Total do Item: {qtd} un x R$ {preco_unit:.2f} = R$ {(qtd * preco_unit):.2f}")
+                else:
+                    # Para produtos comuns sem tabela fixa
+                    qtd = st.number_input("Quantidade:", min_value=1, value=1, step=1, key="qtd_prod_input")
+                    preco_unit = st.number_input(
+                        "Preço Unitário (R$):", 
+                        value=float(prod_info['Preço de Venda (R$)']), 
+                        format="%.2f", 
+                        key="preco_prod_input"
+                    )
 
-                if st.button("➕ Adicionar ao Carrinho"):
+                if st.button("➕ Adicionar ao Carrinho", type="primary", use_container_width=True):
                     st.session_state.carrinho.append({
                         "nome": prod_nome,
                         "qtd": qtd,
                         "preco_unit": preco_unit,
                         "subtotal": qtd * preco_unit
                     })
-                    st.success("Item adicionado com sucesso!")
+                    st.success("Item adicionado ao carrinho!")
+                    st.rerun()
             else:
                 st.info("Nenhum produto cadastrado no catálogo.")
                 
@@ -258,6 +251,7 @@ if menu == "🛒 PDV / Caixa":
                         "subtotal": qtd_avulso * preco_avulso
                     })
                     st.success("Item avulso adicionado!")
+                    st.rerun()
                 else:
                     st.warning("Preencha a descrição do item.")
                     
