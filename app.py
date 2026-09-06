@@ -5,6 +5,7 @@ import math
 import os
 from datetime import datetime
 from fpdf import FPDF
+from PIL import Image
 
 # ==========================================
 # CONFIGURAÇÃO INICIAL E ESTILO
@@ -68,16 +69,27 @@ class PDFOrcamento(FPDF):
         self.rect(0, 0, self.w, self.h, 'F')
 
     def header(self):
-        # Inclusão da logo se existir no diretório
-        if os.path.exists("logo.jpg"):
-            self.image("logo.jpg", 10, 8, 33)
-            self.set_x(48)
-            self.set_font("Helvetica", "B", 16)
-            self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True)
-            self.set_x(48)
-            self.set_font("Helvetica", "", 10)
-            self.cell(0, 5, "Orçamentos e Comprovantes de Pedido", ln=True)
-            self.ln(10)
+        logo_path = None
+        # Procura variações do nome do arquivo no repositório
+        for pos_path in ["logo.jpg", "logo.jpeg", "logo.png", "Logo.jpg", "LOGO.JPG"]:
+            if os.path.exists(pos_path):
+                logo_path = pos_path
+                break
+
+        if logo_path:
+            try:
+                self.image(logo_path, 10, 8, 35)
+                self.set_x(48)
+                self.set_font("Helvetica", "B", 16)
+                self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True)
+                self.set_x(48)
+                self.set_font("Helvetica", "", 10)
+                self.cell(0, 5, "Orçamentos e Comprovantes de Pedido", ln=True)
+                self.ln(10)
+            except Exception:
+                self.set_font("Helvetica", "B", 18)
+                self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True, align="C")
+                self.ln(5)
         else:
             self.set_font("Helvetica", "B", 18)
             self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True, align="C")
@@ -113,7 +125,7 @@ def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total):
     
     pdf.ln(5)
     
-    # Cabeçalho da Tabela (Bege levemente mais escuro para destaque: RGB 235, 228, 220)
+    # Cabeçalho da Tabela
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_fill_color(235, 228, 220)
     pdf.cell(100, 8, "Descrição do Item / Produto", border=1, fill=True)
@@ -122,7 +134,7 @@ def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total):
     pdf.cell(35, 8, "Subtotal (R$)", border=1, align="R", fill=True)
     pdf.ln()
     
-    # Itens do Orçamento (Preenchimento transparente para manter a cor da página)
+    # Itens do Orçamento
     pdf.set_font("Helvetica", "", 9)
     pdf.set_fill_color(247, 243, 238)
     for item in itens:
