@@ -5,7 +5,6 @@ import math
 import os
 from datetime import datetime
 from fpdf import FPDF
-from PIL import Image
 
 # ==========================================
 # CONFIGURAÇÃO INICIAL E ESTILO
@@ -62,6 +61,10 @@ OPCOES_TABELA = {
 # CLASSE PARA GERAÇÃO DO PDF DE ORÇAMENTO
 # ==========================================
 class PDFOrcamento(FPDF):
+    def __init__(self, logo_path=None):
+        super().__init__()
+        self.logo_path = logo_path
+
     def add_page(self, orientation='', format='', same_pagedim=False):
         super().add_page(orientation, format, same_pagedim)
         # Preenche o fundo de toda a página com o bege da logo (RGB: 247, 243, 238)
@@ -69,16 +72,18 @@ class PDFOrcamento(FPDF):
         self.rect(0, 0, self.w, self.h, 'F')
 
     def header(self):
-        logo_path = None
-        # Procura variações do nome do arquivo no repositório
-        for pos_path in ["logo.jpg", "logo.jpeg", "logo.png", "Logo.jpg", "LOGO.JPG"]:
-            if os.path.exists(pos_path):
-                logo_path = pos_path
-                break
+        logo_usar = self.logo_path
+        
+        # Se não foi fornecido upload, busca no diretório
+        if not logo_usar:
+            for f in os.listdir("."):
+                if f.lower().startswith("logo") and f.lower().endswith((".jpg", ".jpeg", ".png")):
+                    logo_usar = f
+                    break
 
-        if logo_path:
+        if logo_usar and os.path.exists(logo_usar):
             try:
-                self.image(logo_path, 10, 8, 35)
+                self.image(logo_usar, 10, 8, 35)
                 self.set_x(48)
                 self.set_font("Helvetica", "B", 16)
                 self.cell(0, 10, "CL ARTES - PERSONALIZADOS", ln=True)
@@ -106,8 +111,8 @@ class PDFOrcamento(FPDF):
         self.ln(2)
         self.cell(0, 5, f"Página {self.page_no()}", align="C")
 
-def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total):
-    pdf = PDFOrcamento()
+def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total, logo_path=None):
+    pdf = PDFOrcamento(logo_path=logo_path)
     pdf.add_page()
     
     # Título do Documento
@@ -414,6 +419,14 @@ elif menu == "📄 Gerar Orçamento":
             cliente_contato = ""
             cliente_id = None
             
+    with col_c2:
+        logo_upload = st.file_uploader("🖼️ Enviar / Modificar Imagem da Logo no PDF:", type=["jpg", "jpeg", "png"])
+        logo_temp_path = None
+        if logo_upload is not None:
+            logo_temp_path = f"temp_logo.{logo_upload.name.split('.')[-1]}"
+            with open(logo_temp_path, "wb") as f:
+                f.write(logo_upload.getbuffer())
+
     st.divider()
     
     if 'itens_orcamento' not in st.session_state:
@@ -458,7 +471,7 @@ elif menu == "📄 Gerar Orçamento":
             total_orc = sum(item['subtotal'] for item in st.session_state.itens_orcamento)
             st.markdown(f"### **Total do Orçamento: R$ {total_orc:.2f}**")
             
-            pdf_data = gerar_pdf_bytes(cliente_nome, cliente_contato, st.session_state.itens_orcamento, total_orc)
+            pdf_data = gerar_pdf_bytes(cliente_nome, cliente_contato, st.session_state.itens_orcamento, total_orc, logo_path=logo_temp_path)
             
             col_b_dl, col_b_salvar, col_b_cls = st.columns(3)
             
