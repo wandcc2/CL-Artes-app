@@ -61,6 +61,12 @@ OPCOES_TABELA = {
 # CLASSE PARA GERAÇÃO DO PDF DE ORÇAMENTO
 # ==========================================
 class PDFOrcamento(FPDF):
+    def add_page(self, orientation='', format='', same_pagedim=False):
+        super().add_page(orientation, format, same_pagedim)
+        # Preenche o fundo de toda a página com o bege da logo (RGB: 247, 243, 238)
+        self.set_fill_color(247, 243, 238)
+        self.rect(0, 0, self.w, self.h, 'F')
+
     def header(self):
         # Inclusão da logo se existir no diretório
         if os.path.exists("logo.jpg"):
@@ -107,29 +113,31 @@ def gerar_pdf_bytes(cliente_nome, cliente_contato, itens, valor_total):
     
     pdf.ln(5)
     
-    # Cabeçalho da Tabela
+    # Cabeçalho da Tabela (Bege levemente mais escuro para destaque: RGB 235, 228, 220)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.set_fill_color(230, 230, 230)
+    pdf.set_fill_color(235, 228, 220)
     pdf.cell(100, 8, "Descrição do Item / Produto", border=1, fill=True)
     pdf.cell(25, 8, "Qtd", border=1, align="C", fill=True)
     pdf.cell(30, 8, "Vlr. Un. (R$)", border=1, align="R", fill=True)
     pdf.cell(35, 8, "Subtotal (R$)", border=1, align="R", fill=True)
     pdf.ln()
     
-    # Itens do Orçamento
+    # Itens do Orçamento (Preenchimento transparente para manter a cor da página)
     pdf.set_font("Helvetica", "", 9)
+    pdf.set_fill_color(247, 243, 238)
     for item in itens:
         nome_curto = item['nome'][:50] + "..." if len(item['nome']) > 53 else item['nome']
-        pdf.cell(100, 7, nome_curto, border=1)
-        pdf.cell(25, 7, str(item['qtd']), border=1, align="C")
-        pdf.cell(30, 7, f"{item['preco_unit']:.2f}", border=1, align="R")
-        pdf.cell(35, 7, f"{item['subtotal']:.2f}", border=1, align="R")
+        pdf.cell(100, 7, nome_curto, border=1, fill=True)
+        pdf.cell(25, 7, str(item['qtd']), border=1, align="C", fill=True)
+        pdf.cell(30, 7, f"{item['preco_unit']:.2f}", border=1, align="R", fill=True)
+        pdf.cell(35, 7, f"{item['subtotal']:.2f}", border=1, align="R", fill=True)
         pdf.ln()
         
     # Totalizador
     pdf.ln(3)
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(155, 8, "VALOR TOTAL ESTIMADO:", border=0, align="R")
+    pdf.set_fill_color(235, 228, 220)
     pdf.cell(35, 8, f"R$ {valor_total:.2f}", border=1, align="R", fill=True)
     
     return bytes(pdf.output())
@@ -141,7 +149,6 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Tabela de Clientes
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,7 +159,6 @@ def init_db():
         )
     ''')
     
-    # Tabela de Produtos (Catálogo PDV)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS produtos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +168,6 @@ def init_db():
         )
     ''')
     
-    # Tabela de Vendas (PDV e Orçamentos)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS vendas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,7 +183,6 @@ def init_db():
         )
     ''')
     
-    # Inserção automática dos produtos se o catálogo estiver vazio
     cursor.execute("SELECT COUNT(*) FROM produtos")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
