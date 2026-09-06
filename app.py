@@ -14,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Nome do Banco de Dados
 DB_NAME = 'sistema_cl_artes.db'
 
 # Estilo CSS Personalizado
@@ -36,6 +35,37 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# REGRAS DE PREÇO POR QUANTIDADE (ATACADO)
+# ==========================================
+TABELA_DESCONTOS = {
+    "CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)": [
+        {"min": 90, "preco": 8.33},
+        {"min": 60, "preco": 8.75},
+        {"min": 30, "preco": 9.17},
+        {"min": 1,  "preco": 9.17}
+    ],
+    "CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)": [
+        {"min": 1000, "preco": 3.50},
+        {"min": 500,  "preco": 3.67},
+        {"min": 250,  "preco": 3.71},
+        {"min": 100,  "preco": 3.75},
+        {"min": 50,   "preco": 3.83},
+        {"min": 20,   "preco": 3.92},
+        {"min": 10,   "preco": 4.17},
+        {"min": 1,    "preco": 4.17}
+    ]
+}
+
+def calcular_preco_unitario(nome_produto, quantidade):
+    """Calcula o preço unitário correto com base na faixa de quantidade do produto"""
+    if nome_produto in TABELA_DESCONTOS:
+        faixas = TABELA_DESCONTOS[nome_produto]
+        for faixa in faixas:
+            if quantidade >= faixa["min"]:
+                return faixa["preco"]
+    return None
 
 # ==========================================
 # BANCO DE DADOS
@@ -82,10 +112,18 @@ def init_db():
         )
     ''')
     
+    # Inserção automática dos novos produtos se o catálogo estiver vazio
+    cursor.execute("SELECT COUNT(*) FROM produtos")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute('''
+            INSERT INTO produtos (nome, categoria, preco, estoque) VALUES
+            ('CHAVEIRO CORDÃO (Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm)', 'Chaveiros / Brindes', 9.17, 1000),
+            ('CHAVEIRO ABRIDOR (Ferro - Gravação a Laser - 3,8x0,7cm)', 'Chaveiros / Brindes', 4.17, 1000)
+        ''')
+    
     conn.commit()
     conn.close()
 
-# Inicializa o banco na abertura do script
 init_db()
 
 # ==========================================
@@ -119,7 +157,7 @@ if not checar_login():
     st.stop()
 
 # ==========================================
-# BARRA LATERAL (Navegação + Logout)
+# BARRA LATERAL
 # ==========================================
 st.sidebar.title(f"👤 Olá, {st.session_state.get('usuario_atual', 'Usuário')}")
 if st.sidebar.button("🚪 Sair do Sistema"):
@@ -179,17 +217,31 @@ if menu == "🛒 PDV / Caixa":
                 prod_nome = st.selectbox("Selecione o Produto:", df_produtos['nome'].tolist())
                 prod_info = df_produtos[df_produtos['nome'] == prod_nome].iloc[0]
                 
-                qtd = st.number_input("Quantidade:", min_value=1, value=1, key="qtd_prod")
-                preco_unit = st.number_input("Preço Unitário (R$):", value=float(prod_info['preco']), key="preco_prod")
+                qtd = st.number_input("Quantidade:", min_value=1, value=10, step=1, key="qtd_prod")
                 
+                # Aplica cálculo automático de preço por tabela progressiva (se disponível)
+                preco_sugerido = calcular_preco_unitario(prod_nome, qtd)
+                if preco_sugerido is None:
+                    preco_sugerido = float(prod_info['preco'])
+                
+                preco_unit = st.number_input(
+                    "Preço Unitário (R$):", 
+                    value=float(preco_sugerido), 
+                    format="%.2f", 
+                    key="preco_prod"
+                )
+                
+                if prod_nome in TABELA_DESCONTOS:
+                    st.info(f"💡 Preço recalculado pela tabela de quantidade ({qtd} un = R$ {preco_sugerido:.2f}/un).")
+
                 if st.button("➕ Adicionar ao Carrinho"):
                     st.session_state.carrinho.append({
-                        "nome": prod_info['nome'],
+                        "nome": prod_nome,
                         "qtd": qtd,
                         "preco_unit": preco_unit,
                         "subtotal": qtd * preco_unit
                     })
-                    st.success("Item adicionado!")
+                    st.success("Item adicionado com sucesso!")
             else:
                 st.info("Nenhum produto cadastrado no catálogo.")
                 
@@ -364,18 +416,18 @@ elif menu == "👥 Clientes":
 # 4. MÓDULO: CATÁLOGO DE PRODUTOS
 # ==========================================
 elif menu == "📦 Catálogo de Produtos":
-    st.markdown("<h1 class='main-title'>📦 Catálogo de Produtos</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-title'>📦 Catálogo de Produtos & Tabelas de Preço</h1>", unsafe_allow_html=True)
     
-    tab_p1, tab_p2 = st.tabs(["➕ Novo Produto", "📋 Produtos Cadastrados"])
+    tab_p1, tab_p2, tab_p3 = st.tabs(["➕ Novo Produto", "📋 Produtos Cadastrados", "🏷️ Tabela de Atacado / Escala"])
     
     with tab_p1:
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             nome_prod = st.text_input("Nome do Produto / Item:")
-            categoria_prod = st.text_input("Categoria (ex: Camisetas, Canecas, Mídia):")
+            categoria_prod = st.text_input("Categoria (ex: Chaveiros, Camisetas):")
         with col_p2:
             preco_prod = st.number_input("Preço de Venda (R$):", min_value=0.01, value=25.0, step=1.0)
-            estoque_prod = st.number_input("Estoque Inicial:", min_value=0, value=10, step=1)
+            estoque_prod = st.number_input("Estoque Inicial:", min_value=0, value=100, step=1)
             
         if st.button("Cadastrar Produto", type="primary"):
             if nome_prod:
@@ -397,6 +449,35 @@ elif menu == "📦 Catálogo de Produtos":
             st.dataframe(df_prod, use_container_width=True)
         else:
             st.info("Nenhum produto cadastrado.")
+
+    with tab_p3:
+        st.subheader("Tabelas de Desconto Progressivo por Quantidade")
+        
+        col_t1, col_t2 = st.columns(2)
+        
+        with col_t1:
+            st.markdown("### 🔑 CHAVEIRO CORDÃO")
+            st.caption("Poliéster Acetinado 20mm - Colorido Frente e Verso - 11x2cm")
+            df_cordao = pd.DataFrame([
+                {"Qtd Mínima": "30 un", "Preço Un.": "R$ 9,17", "Total": "R$ 275,00"},
+                {"Qtd Mínima": "60 un", "Preço Un.": "R$ 8,75", "Total": "R$ 525,00"},
+                {"Qtd Mínima": "90 un", "Preço Un.": "R$ 8,33", "Total": "R$ 750,00"}
+            ])
+            st.table(df_cordao)
+
+        with col_t2:
+            st.markdown("### 🔑 CHAVEIRO ABRIDOR")
+            st.caption("Ferro - Gravação a Laser - 3,8x0,7cm")
+            df_abridor = pd.DataFrame([
+                {"Qtd Mínima": "10 un",   "Preço Un.": "R$ 4,17", "Total": "R$ 41,67"},
+                {"Qtd Mínima": "20 un",   "Preço Un.": "R$ 3,92", "Total": "R$ 78,33"},
+                {"Qtd Mínima": "50 un",   "Preço Un.": "R$ 3,83", "Total": "R$ 191,67"},
+                {"Qtd Mínima": "100 un",  "Preço Un.": "R$ 3,75", "Total": "R$ 375,00"},
+                {"Qtd Mínima": "250 un",  "Preço Un.": "R$ 3,71", "Total": "R$ 926,67"},
+                {"Qtd Mínima": "500 un",  "Preço Un.": "R$ 3,67", "Total": "R$ 1.833,17"},
+                {"Qtd Mínima": "1000 un", "Preço Un.": "R$ 3,50", "Total": "R$ 3.499,83"}
+            ])
+            st.table(df_abridor)
 
 # ==========================================
 # 5. MÓDULO: HISTÓRICO DE VENDAS
